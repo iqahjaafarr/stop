@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WILDLIFE MYSTERY BOX</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <!-- Tone.js for Sound Effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(135deg, #1b5e20, #4caf50, #81c784);
+            background-size: 300% 300%;
+            animation: gradientBG 15s ease infinite;
+            overflow: hidden; /* Prevent scrolling during gameplay */
+            touch-action: none; /* Prevent pinch zoom on mobile */
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Jungle leaf decorations */
+        .leaf {
+            position: fixed;
+            background-color: #2e7d32;
+            border-radius: 0 50% 0 50%;
+            z-index: -1;
+            opacity: 0.6;
+        }
+        
+        .screen {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            flex-direction: column;
+        }
+        
+        .screen.active {
+            display: flex;
+        }
+
+        /* Gift Box Styles */
+        .mystery-box {
+            position: relative;
+            background: linear-gradient(to bottom, #d32f2f, #b71c1c);
+            border-radius: 12px;
+            box-shadow: 0 8px 0 #921717, 0 15px 20px rgba(0,0,0,0.4);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            cursor: pointer;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+            min-height: 120px;
+            will-change: transform;
+        }
+
+        .mystery-box:active, .mystery-box.dwell-active {
+            transform: translateY(8px);
+            box-shadow: 0 0px 0 #921717, 0 5px 10px rgba(0,0,0,0.4);
+        }
+
+        /* Box Ribbons */
+        .mystery-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 15%;
+            height: 100%;
+            background: #ffca28;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+        .mystery-box::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0;
+            transform: translateY(-50%);
+            width: 100%;
+            height: 15%;
+            background: #ffca28;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .box-content {
+            position: relative;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #333;
+            border: 3px solid #ffca28;
+            pointer-events: none; /* Let box handle events */
+            width: 90%;
+        }
+
+        /* Box Color Variants */
+        .box-b { background: linear-gradient(to bottom, #1976d2, #0d47a1); box-shadow: 0 8px 0 #0a367a, 0 15px 20px rgba(0,0,0,0.4); }
+        .box-c { background: linear-gradient(to bottom, #388e3c, #1b5e20); box-shadow: 0 8px 0 #134417, 0 15px 20px rgba(0,0,0,0.4); }
+        .box-d { background: linear-gradient(to bottom, #f57c00, #e65100); box-shadow: 0 8px 0 #a93c00, 0 15px 20px rgba(0,0,0,0.4); }
+
+        /* Hand Tracking Cursor */
+        #hand-cursor {
+            position: fixed;
+            top: -50px; left: -50px;
+            width: 50px; height: 50px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 9999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .cursor-dot {
+            width: 16px; height: 16px;
+            background-color: #ff3d00;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            position: absolute;
+        }
+
+        .progress-ring {
+            width: 60px; height: 60px;
+            position: absolute;
+            transform: rotate(-90deg);
+        }
+
+        .progress-ring circle {
+            fill: transparent;
+            stroke: #ffea00;
+            stroke-width: 6;
+            stroke-dasharray: 157; /* 2 * pi * r (r=25) */
+            stroke-dashoffset: 157;
+            transition: stroke-dashoffset 0.05s linear;
+        }
+
+        /* Animations */
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); opacity: 1; }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+
+        .animate-bounceIn { animation: bounceIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+        .animate-shake { animation: shake 0.5s; }
+
+        @keyframes openGift {
+            0% { transform: scale(1); }
+            20% { transform: scale(1.1) rotate(5deg); }
+            40% { transform: scale(1.1) rotate(-5deg); }
+            60% { transform: scale(1.1) rotate(5deg); }
+            100% { transform: scale(1.5); opacity: 0; filter: blur(5px); }
+        }
+        .animate-open { animation: openGift 1s forwards; z-index: 50;}
+
+        /* Webcam Pip */
+        #webcam-pip {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            border-radius: 12px;
+            border: 3px solid white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            background: #000;
+            z-index: 50;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #video-element {
+            width: 100%;
+            transform: scaleX(-1); /* Mirror camera */
+        }
+        #webcam-status {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 0.7rem;
+            text-align: center;
+            padding: 4px;
+            position: absolute;
+            bottom: 0; width: 100%;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 4px solid rgba(255,255,255,0.5);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased h-screen w-screen selection:bg-green-300">
+
+    <!-- Decorative Leaves -->
+    <div class="leaf" style="width: 200px; height: 200px; top: -50px; left: -50px; transform: rotate(45deg);"></div>
+    <div class="leaf" style="width: 300px; height: 300px; bottom: -100px; right: -50px; transform: rotate(-45deg);"></div>
+
+    <!-- UI Overlays -->
+    <div class="fixed top-4 right-4 z-50 flex gap-2">
+        <button id="btn-mute" class="bg-white/80 p-3 rounded-full shadow-lg hover:bg-white transition text-xl">
+            🔊
+        </button>
+    </div>
+
+    <!-- Hand Tracking Cursor -->
+    <div id="hand-cursor">
+        <svg class="progress-ring">
+            <circle cx="30" cy="30" r="25"></circle>
+        </svg>
+        <div class="cursor-dot"></div>
+    </div>
+
+    <!-- SCREEN 1: WELCOME -->
+    <div id="screen-welcome" class="screen active justify-center items-center p-4">
+        <div class="glass-panel p-8 rounded-3xl max-w-2xl w-full text-center animate-bounceIn">
+            <div class="flex justify-center mb-4">
+                <!-- Ranger Avatar SVG -->
+                <svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="#fde047"/>
+                    <path d="M 20 50 Q 50 10 80 50" fill="#8b4513"/> <!-- Hat brim -->
+                    <path d="M 30 50 L 35 20 Q 50 15 65 20 L 70 50" fill="#8b4513"/> <!-- Hat top -->
+                    <circle cx="35" cy="60" r="5" fill="#333"/> <!-- Eye -->
+                    <circle cx="65" cy="60" r="5" fill="#333"/> <!-- Eye -->
+                    <path d="M 40 75 Q 50 85 60 75" stroke="#333" stroke-width="3" fill="transparent" stroke-linecap="round"/> <!-- Smile -->
+                </svg>
+            </div>
+            <h1 class="text-4xl md:text-6xl font-black text-green-800 mb-2 drop-shadow-md">WILDLIFE MYSTERY BOX</h1>
+            <h2 class="text-xl md:text-2xl font-bold text-orange-600 mb-6">Read, Think and Unlock the Animal Secrets!</h2>
+            
+            <div class="bg-white/50 rounded-xl p-4 mb-8 text-left inline-block">
+                <h3 class="font-bold text-lg mb-2 border-b-2 border-green-500 pb-1">How to play:</h3>
+                <ul class="list-disc pl-5 space-y-2 text-md">
+                    <li>Read the interesting animal facts.</li>
+                    <li>Choose the correct mystery box!</li>
+                    <li><strong>Controls:</strong> Use your mouse, tap the screen, OR turn on your webcam to use <strong>Hand Tracking!</strong></li>
+                    <li><em>Hand Tracking: Hold your index finger over a box for 1 second to open it.</em></li>
+                </ul>
+            </div>
+
+            <div>
+                <button id="btn-start" class="bg-gradient-to-r from-orange-400 to-red-500 text-white text-2xl font-black py-4 px-10 rounded-full shadow-[0_6px_0_#b91c1c] hover:translate-y-1 hover:shadow-[0_4px_0_#b91c1c] active:translate-y-2 active:shadow-none transition-all">
+                    START GAME
+                </button>
+            </div>
+            <div id="loading-model-msg" class="mt-4 text-sm text-gray-600 font-bold hidden">
+                Loading Camera & Hand AI... Please wait.
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 2: GAME SCREEN -->
+    <div id="screen-game" class="screen flex-col p-2 sm:p-4 md:p-8">
+        
+        <!-- Top HUD -->
+        <div class="flex justify-between items-center bg-white/90 rounded-full px-6 py-3 shadow-md mb-4 shrink-0">
+            <div class="flex items-center gap-3">
+                <button id="btn-home" class="bg-gray-200 hover:bg-gray-300 p-2 rounded-full transition" title="Home">
+                    🏠
+                </button>
+                <div class="font-black text-xl text-green-700">Question <span id="ui-question-num">1</span>/12</div>
+            </div>
+            <div class="font-black text-2xl text-orange-600 flex items-center gap-2">
+                ⭐ <span id="ui-score">0</span> pts
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col items-center justify-center max-w-5xl mx-auto w-full gap-6">
+            
+            <!-- Question Panel -->
+            <div class="glass-panel w-full p-6 md:p-8 rounded-3xl text-center shadow-xl border-t-8 border-t-green-500 relative">
+                <!-- Ranger Mascot -->
+                <div class="absolute -top-12 left-1/2 transform -translate-x-1/2 w-20 h-20 bg-yellow-300 rounded-full border-4 border-white shadow-md flex items-center justify-center overflow-hidden">
+                   <svg width="60" height="60" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 20 50 Q 50 10 80 50" fill="#8b4513"/>
+                        <path d="M 30 50 L 35 20 Q 50 15 65 20 L 70 50" fill="#8b4513"/>
+                        <circle cx="35" cy="60" r="5" fill="#333"/>
+                        <circle cx="65" cy="60" r="5" fill="#333"/>
+                        <path d="M 40 75 Q 50 85 60 75" stroke="#333" stroke-width="3" fill="transparent" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                
+                <h2 id="question-text" class="text-2xl md:text-4xl font-extrabold text-gray-800 mt-4 leading-tight">
+                    Loading question...
+                </h2>
+            </div>
+
+            <!-- Answers Grid -->
+            <div id="answers-grid" class="w-full grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mt-2">
+                <!-- Buttons injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 3: FEEDBACK SCREEN -->
+    <div id="screen-feedback" class="screen fixed inset-0 bg-black/60 z-50 items-center justify-center backdrop-blur-sm pointer-events-auto transition-opacity duration-200 opacity-0 pointer-events-none">
+        <div id="feedback-panel" class="bg-white rounded-3xl p-8 max-w-lg w-full text-center shadow-2xl border-8 border-white transform scale-90 transition-transform duration-200 ease-out relative z-50">
+            
+            <div id="feedback-icon" class="text-6xl mb-4">🎁</div>
+            <h2 id="feedback-title" class="text-4xl font-black mb-2"></h2>
+            <p id="feedback-msg" class="text-xl font-bold text-gray-700 mb-6 whitespace-pre-line"></p>
+            <div id="feedback-pts" class="text-2xl font-black text-orange-500 mb-6 hidden">+10 Points!</div>
+            
+            <button id="btn-next" type="button" class="bg-green-500 text-white text-xl font-black py-4 px-8 rounded-full shadow-[0_5px_0_#2e7d32] hover:translate-y-1 hover:shadow-[0_3px_0_#2e7d32] active:translate-y-2 active:shadow-none transition-all w-full cursor-pointer relative z-50">
+                NEXT QUESTION
+            </button>
+        </div>
+    </div>
+
+    <!-- SCREEN 4: FINAL SCORE -->
+    <div id="screen-final" class="screen items-center justify-center p-4">
+        <div class="glass-panel p-8 rounded-3xl max-w-2xl w-full text-center animate-bounceIn">
+            <h1 class="text-5xl font-black text-green-800 mb-2">GAME COMPLETED!</h1>
+            <div class="my-8">
+                <div class="text-2xl font-bold text-gray-700">Final Score</div>
+                <div class="text-6xl font-black text-orange-600 drop-shadow-md my-2">
+                    <span id="final-score">0</span> / 120
+                </div>
+                <div id="final-correct" class="text-xl font-bold text-gray-600 mb-6">Correct Answers: 0/12</div>
+                
+                <div class="bg-yellow-100 border-4 border-yellow-400 rounded-2xl p-6 mx-auto max-w-sm">
+                    <div class="text-5xl mb-2">🏅</div>
+                    <div class="text-2xl font-black text-yellow-800" id="final-badge">WILDLIFE DETECTIVE</div>
+                    <div class="text-yellow-700 font-bold mt-2" id="final-msg">You are amazing!</div>
+                </div>
+            </div>
+            
+            <div class="flex gap-4 justify-center mt-8">
+                <button id="btn-restart" class="bg-blue-500 text-white text-xl font-black py-3 px-8 rounded-full shadow-[0_5px_0_#1565c0] hover:translate-y-1 hover:shadow-[0_3px_0_#1565c0] active:translate-y-2 active:shadow-none transition-all">
+                    PLAY AGAIN
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webcam Pip -->
+    <div id="webcam-pip" class="hidden md:flex">
+        <video id="video-element" autoplay playsinline></video>
+        <div id="webcam-status">Camera Off</div>
+    </div>
+
+    <script>
+        /* =========================================================================
+           DATA: 12 Pre-loaded Multiple-Choice Questions (Strict adherence to prompt)
+           ========================================================================= */
+        const ALL_QUESTIONS = [
+            {
+                id: 1,
+                topic: "BLOBFISH",
+                question: "Where does the blobfish live?",
+                options: [
+                    "In the desert",
+                    "Deep in the ocean",
+                    "In the forest",
+                    "On snowy mountains"
+                ],
+                correctAnswer: "Deep in the ocean"
+            },
+            {
+                id: 2,
+                topic: "BLOBFISH",
+                question: "Why does the blobfish have a soft body?",
+                options: [
+                    "To help it fly",
+                    "To help it climb trees",
+                    "To help it survive under high water pressure",
+                    "To help it run faster"
+                ],
+                correctAnswer: "To help it survive under high water pressure"
+            },
+            {
+                id: 3,
+                topic: "AXOLOTL",
+                question: "What amazing ability does the axolotl have?",
+                options: [
+                    "It can grow back lost legs.",
+                    "It can change its fur colour.",
+                    "It can fly across the ocean.",
+                    "It can produce electricity."
+                ],
+                correctAnswer: "It can grow back lost legs."
+            },
+            {
+                id: 4,
+                topic: "AXOLOTL",
+                question: "What are the feathery structures on the sides of its head called?",
+                options: [
+                    "Scales",
+                    "Wings",
+                    "Fins",
+                    "Gills"
+                ],
+                correctAnswer: "Gills"
+            },
+            {
+                id: 5,
+                topic: "PLATYPUS",
+                question: "What makes the platypus special among mammals?",
+                options: [
+                    "It has eight arms.",
+                    "It lays eggs.",
+                    "It changes colour.",
+                    "It has three hearts."
+                ],
+                correctAnswer: "It lays eggs."
+            },
+            {
+                id: 6,
+                topic: "PLATYPUS",
+                question: "How does the platypus find food underwater?",
+                options: [
+                    "By using its colourful feathers",
+                    "By following other animals",
+                    "By detecting tiny electrical signals",
+                    "By smelling flowers"
+                ],
+                correctAnswer: "By detecting tiny electrical signals"
+            },
+            {
+                id: 7,
+                topic: "OCTOPUS",
+                question: "How many hearts does an octopus have?",
+                options: [
+                    "Three",
+                    "One",
+                    "Two",
+                    "Four"
+                ],
+                correctAnswer: "Three"
+            },
+            {
+                id: 8,
+                topic: "OCTOPUS",
+                question: "Why does an octopus change its skin colour?",
+                options: [
+                    "To keep its body warm",
+                    "To attract butterflies",
+                    "To make its arms longer",
+                    "To hide from enemies"
+                ],
+                correctAnswer: "To hide from enemies"
+            },
+            {
+                id: 9,
+                topic: "PANGOLIN",
+                question: "What does a pangolin do when it feels frightened?",
+                options: [
+                    "It flies away.",
+                    "It rolls into a tight ball.",
+                    "It changes its colour.",
+                    "It hides underwater."
+                ],
+                correctAnswer: "It rolls into a tight ball."
+            },
+            {
+                id: 10,
+                topic: "ARCTIC FOX",
+                question: "Why does the Arctic fox have thick, fluffy fur?",
+                options: [
+                    "To help it swim faster",
+                    "To attract other animals",
+                    "To keep its body warm",
+                    "To help it climb trees"
+                ],
+                correctAnswer: "To keep its body warm" // Dot removed for consistency in match
+            },
+            {
+                id: 11,
+                topic: "SUPERLATIVE ADJECTIVES",
+                question: 'According to the fact file, which animal is described as the "cleverest" animal in the ocean?',
+                options: [
+                    "Blobfish",
+                    "Pangolin",
+                    "Arctic fox",
+                    "Octopus"
+                ],
+                correctAnswer: "Octopus"
+            },
+            {
+                id: 12,
+                topic: "SUPERLATIVE ADJECTIVES",
+                question: 'Which superlative adjective correctly completes this sentence?\n"The Arctic fox is one of the ______ animals in the Arctic."',
+                options: [
+                    "fluffiest",
+                    "fluffy",
+                    "more fluffy",
+                    "most fluffy"
+                ],
+                correctAnswer: "fluffiest"
+            }
+        ];
+
+        /* =========================================================================
+           GAME STATE & LOGIC
+           ========================================================================= */
+        let state = {
+            currentScreen: 'screen-welcome',
+            questionIndex: 0,
+            score: 0,
+            correctCount: 0,
+            isMuted: false,
+            waitingForNext: false
+        };
+
+        // DOM Elements
+        const screens = document.querySelectorAll('.screen');
+        const grid = document.getElementById('answers-grid');
+        const scoreUI = document.getElementById('ui-score');
+        const qNumUI = document.getElementById('ui-question-num');
+        const qTextUI = document.getElementById('question-text');
+        const feedbackScreen = document.getElementById('screen-feedback');
+        const feedbackPanel = document.getElementById('feedback-panel');
+
+        /* Utility: Shuffle Array */
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        /* Screen Management */
+        function showScreen(id) {
+            screens.forEach(s => s.classList.remove('active'));
+            const target = document.getElementById(id);
+            if(target) {
+                target.classList.add('active');
+                state.currentScreen = id;
+            }
+        }
+
+        /* Core Game Loop */
+        function startGame() {
+            initAudio(); // Required to start Tone.js Context on user gesture
+            state.questionIndex = 0;
+            state.score = 0;
+            state.correctCount = 0;
+            updateHUD();
+            loadQuestion();
+            showScreen('screen-game');
+            playSound('start');
+        }
+
+        function loadQuestion() {
+            state.waitingForNext = false;
+            const q = ALL_QUESTIONS[state.questionIndex];
+            
+            // Clean specific question formatting (newlines to <br>)
+            qTextUI.innerHTML = q.question.replace(/\n/g, '<br>');
+            qNumUI.innerText = state.questionIndex + 1;
+
+            // Box color classes (randomized visual order)
+            const boxColors = shuffleArray(['', 'box-b', 'box-c', 'box-d']);
+            
+            // Shuffle options
+            const shuffledOptions = shuffleArray(q.options);
+            const letters = ['A', 'B', 'C', 'D'];
+
+            grid.innerHTML = '';
+            shuffledOptions.forEach((opt, index) => {
+                const isCorrect = q.correctAnswer.replace('.','') === opt.replace('.',''); // loose match due to typo in array vs requirement
+
+                const btn = document.createElement('div');
+                btn.className = `mystery-box ${boxColors[index]} col-span-1`;
+                // Add identifying data for interaction
+                btn.dataset.isCorrect = isCorrect;
+                btn.dataset.correctText = q.correctAnswer;
+                
+                btn.innerHTML = `
+                    <div class="box-content flex flex-col items-center gap-2">
+                        <span class="text-orange-500 text-sm bg-orange-100 rounded-full w-6 h-6 flex items-center justify-center mb-1">${letters[index]}</span>
+                        <span>${opt}</span>
+                    </div>
+                `;
+
+                // Event Listeners for Mouse/Touch
+                btn.addEventListener('click', () => handleAnswer(btn, isCorrect, q.correctAnswer));
+                
+                grid.appendChild(btn);
+            });
+        }
+
+        function handleAnswer(btnElement, isCorrect, correctText) {
+            if (state.waitingForNext) return;
+            state.waitingForNext = true;
+
+            // Stop hover tracking on answer click immediately
+            resetDwell();
+
+            if (isCorrect) {
+                state.score += 10;
+                state.correctCount++;
+                updateHUD();
+                
+                // Add opening animation to the clicked box
+                btnElement.classList.add('animate-open');
+                playSound('correct');
+                
+                setTimeout(() => {
+                    showFeedback(true, "Amazing work, Junior Ranger!", "+10 Points!");
+                }, 400);
+
+            } else {
+                btnElement.classList.add('animate-shake');
+                playSound('incorrect');
+                
+                setTimeout(() => {
+                    showFeedback(false, "Not quite! Try the next question!", `The correct answer was:\n${correctText}`);
+                }, 400);
+            }
+        }
+
+        function showFeedback(isCorrect, titleText, msgText) {
+            document.getElementById('feedback-icon').innerText = isCorrect ? '🎁🌟' : '🙈';
+            document.getElementById('feedback-title').innerText = titleText;
+            document.getElementById('feedback-title').className = `text-4xl font-black mb-2 ${isCorrect ? 'text-green-600' : 'text-red-500'}`;
+            document.getElementById('feedback-msg').innerText = msgText;
+            
+            const ptsEl = document.getElementById('feedback-pts');
+            if(isCorrect) {
+                ptsEl.classList.remove('hidden');
+            } else {
+                ptsEl.classList.add('hidden');
+            }
+
+            feedbackScreen.classList.remove('pointer-events-none');
+            feedbackScreen.classList.add('active', 'opacity-100');
+            requestAnimationFrame(() => {
+                feedbackPanel.classList.remove('scale-90');
+                feedbackPanel.classList.add('scale-100');
+            });
+        }
+
+        function nextQuestion() {
+            playSound('click');
+            feedbackPanel.classList.remove('scale-100');
+            feedbackPanel.classList.add('scale-90');
+            feedbackScreen.classList.remove('opacity-100');
+            feedbackScreen.classList.add('pointer-events-none');
+            
+            setTimeout(() => {
+                feedbackScreen.classList.remove('active');
+                state.questionIndex++;
+                
+                if (state.questionIndex >= ALL_QUESTIONS.length) {
+                    endGame();
+                } else {
+                    loadQuestion();
+                }
+            }, 100);
+        }
+
+        function nextQuestion() {
+            playSound('click');
+            feedbackPanel.classList.remove('scale-100');
+            feedbackPanel.classList.add('scale-0');
+            
+            setTimeout(() => {
+                feedbackScreen.classList.remove('active');
+                state.questionIndex++;
+                
+                if (state.questionIndex >= ALL_QUESTIONS.length) {
+                    endGame();
+                } else {
+                    loadQuestion();
+                }
+            }, 150);
+        }
+
+        function endGame() {
+            showScreen('screen-final');
+            document.getElementById('final-score').innerText = state.score;
+            document.getElementById('final-correct').innerText = `Correct Answers: ${state.correctCount}/12`;
+            
+            const badgeEl = document.getElementById('final-badge');
+            const msgEl = document.getElementById('final-msg');
+            
+            if (state.score >= 100) {
+                badgeEl.innerText = "MASTER WILDLIFE RANGER";
+                msgEl.innerText = "Outstanding! You are a top animal expert!";
+            } else if (state.score >= 70) {
+                badgeEl.innerText = "SENIOR WILDLIFE DETECTIVE";
+                msgEl.innerText = "Great job! You unlocked many secrets!";
+            } else {
+                badgeEl.innerText = "JUNIOR RANGER";
+                msgEl.innerText = "Good try! Keep reading to learn more!";
+            }
+            playSound('win');
+        }
+
+        function updateHUD() {
+            scoreUI.innerText = state.score;
+        }
+
+        /* =========================================================================
+           SOUND EFFECTS (Tone.js)
+           ========================================================================= */
+        let synth, membrane, amSynth;
+        let audioInit = false;
+
+        function initAudio() {
+            if(audioInit) return;
+            Tone.start();
+            
+            synth = new Tone.PolySynth(Tone.Synth).toDestination();
+            synth.set({
+                oscillator: { type: "triangle" },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.4 }
+            });
+            synth.volume.value = -12;
+
+            membrane = new Tone.MembraneSynth().toDestination();
+            membrane.volume.value = -12;
+
+            audioInit = true;
+        }
+
+        function playSound(type) {
+            if (!audioInit || state.isMuted) return;
+            const now = Tone.now();
+
+            try {
+                switch(type) {
+                    case 'start':
+                        synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "8n", now);
+                        break;
+                    case 'correct':
+                        synth.triggerAttackRelease("C5", "16n", now);
+                        synth.triggerAttackRelease("E5", "16n", now + 0.1);
+                        synth.triggerAttackRelease("G5", "8n", now + 0.2);
+                        break;
+                    case 'incorrect':
+                        membrane.triggerAttackRelease("C2", "16n", now);
+                        membrane.triggerAttackRelease("G1", "8n", now + 0.15);
+                        break;
+                    case 'click':
+                        membrane.triggerAttackRelease("C4", "32n", now);
+                        break;
+                    case 'win':
+                        synth.triggerAttackRelease(["C4", "E4", "G4"], "8n", now);
+                        synth.triggerAttackRelease(["F4", "A4", "C5"], "8n", now + 0.15);
+                        synth.triggerAttackRelease(["G4", "B4", "D5"], "8n", now + 0.3);
+                        synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "4n", now + 0.45);
+                        break;
+                }
+            } catch(e) {
+                console.warn("Audio playback error caught silently to prevent lag:", e);
+            }
+        }
+
+        /* =========================================================================
+           HAND TRACKING & DWELL SELECTION (MediaPipe)
+           ========================================================================= */
+        const videoElement = document.getElementById('video-element');
+        const webcamStatus = document.getElementById('webcam-status');
+        const cursorEl = document.getElementById('hand-cursor');
+        const progressCircle = document.querySelector('.progress-ring circle');
+        
+        let camera = null;
+        let isCameraActive = false;
+        
+        // Dwell State
+        const DWELL_TIME_MS = 900;
+        let hoverTarget = null;
+        let hoverStartTime = 0;
+        
+        // Smoothing cursor & position state
+        let targetX = window.innerWidth / 2;
+        let targetY = window.innerHeight / 2;
+        let smoothedX = window.innerWidth / 2;
+        let smoothedY = window.innerHeight / 2;
+        const SMOOTHING_FACTOR = 0.45;
+        let handDetected = false;
+        let lastProcessTime = 0;
+
+        async function initCamera() {
+            try {
+                const hands = new Hands({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }});
+                
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 0,
+                    minDetectionConfidence: 0.4,
+                    minTrackingConfidence: 0.4
+                });
+                
+                hands.onResults(onHandResults);
+
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        const now = performance.now();
+                        // Send frames to MediaPipe whenever camera is active
+                        if(isCameraActive && (now - lastProcessTime > 25)) {
+                            lastProcessTime = now;
+                            await hands.send({image: videoElement});
+                        }
+                    },
+                    width: 320,
+                    height: 240
+                });
+                
+                await camera.start();
+                isCameraActive = true;
+                webcamStatus.innerText = "Camera Active";
+                webcamStatus.classList.add("bg-green-600");
+                document.getElementById('loading-model-msg').classList.add('hidden');
+                document.getElementById('webcam-pip').classList.remove('hidden');
+                
+                // Start animation frame loop for cursor rendering
+                requestAnimationFrame(updateCursorLoop);
+                
+            } catch (error) {
+                console.warn("Camera init failed or denied.", error);
+                webcamStatus.innerText = "Camera Off";
+                document.getElementById('loading-model-msg').innerText = "Webcam not available. Play using Mouse/Touch!";
+                setTimeout(() => {
+                    document.getElementById('loading-model-msg').classList.add('hidden');
+                }, 3000);
+            }
+        }
+
+        function onHandResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8]; // Index finger tip
+
+                // Mirror X coordinates because video preview is mirrored
+                targetX = (1 - indexTip.x) * window.innerWidth;
+                targetY = indexTip.y * window.innerHeight;
+                handDetected = true;
+            } else {
+                handDetected = false;
+                resetDwell();
+            }
+        }
+
+        function updateCursorLoop() {
+            if (handDetected) {
+                // Smooth movement on every browser frame (60fps)
+                smoothedX += (targetX - smoothedX) * SMOOTHING_FACTOR;
+                smoothedY += (targetY - smoothedY) * SMOOTHING_FACTOR;
+
+                cursorEl.style.display = 'flex';
+                cursorEl.style.left = `${smoothedX}px`;
+                cursorEl.style.top = `${smoothedY}px`;
+
+                if (state.currentScreen === 'screen-game' && !state.waitingForNext) {
+                    checkDwell(smoothedX, smoothedY);
+                } else {
+                    resetDwell();
+                }
+            } else {
+                cursorEl.style.display = 'none';
+            }
+
+            requestAnimationFrame(updateCursorLoop);
+        }
+
+        function checkDwell(x, y) {
+            // Find element at coordinates
+            const elements = document.elementsFromPoint(x, y);
+            // Find the first element that is a mystery box
+            const box = elements.find(el => el.classList && el.classList.contains('mystery-box'));
+
+            if (box) {
+                if (hoverTarget !== box) {
+                    // New target
+                    resetDwell();
+                    hoverTarget = box;
+                    hoverStartTime = Date.now();
+                    box.classList.add('dwell-active');
+                } else {
+                    // Continuing hover
+                    const elapsed = Date.now() - hoverStartTime;
+                    const progress = Math.min(elapsed / DWELL_TIME_MS, 1);
+                    
+                    // Update SVG Ring (157 is full offset)
+                    progressCircle.style.strokeDashoffset = 157 - (157 * progress);
+
+                    if (elapsed >= DWELL_TIME_MS) {
+                        // Click Triggered!
+                        const isCorrect = box.dataset.isCorrect === 'true';
+                        const correctText = box.dataset.correctText;
+                        handleAnswer(box, isCorrect, correctText);
+                        resetDwell();
+                    }
+                }
+            } else {
+                resetDwell();
+            }
+        }
+
+        function resetDwell() {
+            if (hoverTarget) {
+                hoverTarget.classList.remove('dwell-active');
+            }
+            hoverTarget = null;
+            hoverStartTime = 0;
+            progressCircle.style.strokeDashoffset = 157; // Reset ring
+        }
+
+
+        /* =========================================================================
+           EVENT LISTENERS
+           ========================================================================= */
+        document.getElementById('btn-start').addEventListener('click', startGame);
+        
+        document.getElementById('btn-next').addEventListener('click', nextQuestion);
+        
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            playSound('click');
+            startGame();
+        });
+        
+        document.getElementById('btn-home').addEventListener('click', () => {
+            playSound('click');
+            showScreen('screen-welcome');
+        });
+
+        // Initialize Camera on page load if permission allowed, or prompt
+        window.addEventListener('load', () => {
+            // Give UI a moment to render before intensive MediaPipe load
+            document.getElementById('loading-model-msg').classList.remove('hidden');
+            setTimeout(initCamera, 500);
+        });
+
+    </script>
+</body>
+</html>
